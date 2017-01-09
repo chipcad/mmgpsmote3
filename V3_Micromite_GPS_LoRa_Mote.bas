@@ -1,12 +1,12 @@
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-'           V3_Micromite_GPS_LoRa_Mote_07.bas
+'           V3_Micromite_GPS_LoRa_Mote_08.bas
 ' Holman Tamas ChipCAD Kft.
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
   OPTION EXPLICIT
   OPTION AUTORUN ON
   OPTION DEFAULT INTEGER
   CPU 10
-  ? "Micromite GPS LoRa Mote 3v07 January 6 2017"
+  ? "Micromite GPS LoRa Mote 3v08 January 7 2017"
 ' Reset click modules
   CONST FORCE=2                               'digital O
   CONST GPSPWR=3                              'digital O
@@ -133,7 +133,7 @@ FiveSecWait:
         x$=INKEY$
         t=0
       CASE "T","t"
-        ? STR$(ReadsMCP9800Sensor(),3,1)+" C"
+        IF ReadsMCP9800Sensor()>127 THEN ? STR$(ReadsMCP9800Sensor()-256,+3)+" C" ELSE ? STR$(ReadsMCP9800Sensor(),+3)+" C"
         ? HEX$(ReadsMCP9800Sensor(),2)
         x$=INKEY$
         t=0
@@ -190,8 +190,9 @@ FiveSecWait:
     AllowMotionSensor=1
     PIN(LEDR)=LEDOFF
     PIN(LEDG)=LEDOFF
-    ? "temparature =" STR$(ReadsMCP9800Sensor(),3,1)+" C"
-    ? "battery voltage:",
+    ? "temperature =";
+    IF ReadsMCP9800Sensor()>127 THEN ? STR$(ReadsMCP9800Sensor()-255,+3)+" C" ELSE ? STR$(ReadsMCP9800Sensor(),+3)+" C     "
+    ? "battery voltage:";
     BatteryLevel
     x$=INKEY$
     t=0
