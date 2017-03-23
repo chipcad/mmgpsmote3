@@ -1,12 +1,12 @@
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-'           V3_Micromite_GPS_LoRa_Mote_08.bas
+'           Micromite_GPS_LoRa_Mote_3V1.bas
 ' Holman Tamas ChipCAD Kft.
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
   OPTION EXPLICIT
   OPTION AUTORUN ON
   OPTION DEFAULT INTEGER
   CPU 10
-  ? "Micromite GPS LoRa Mote 3v08 January 7 2017"
+  ? "Micromite GPS LoRa Mote 3v1 March 22 2017"
 ' Reset click modules
   CONST FORCE=2                               'digital O
   CONST GPSPWR=3                              'digital O
@@ -27,12 +27,12 @@
   CONST PUSH=25                               'digital I
   CONST PPS=26                                'digital I
   CONST LEDON=0,LEDOFF=1
-  CONST MaxTime=300                           '300 seconds maximum GPS operation time without motion detection 
-  CONST GPSFullOperationTime=400              '400 seconds in full on mode
+  CONST MaxTime=360                           '360 seconds maximum GPS operation time without motion detection 
+  CONST GPSFullOperationTime=300              '300 seconds in full on mode
   CONST CO2OperatingTime=1500                 'millisecond
   CONST MCP9800Addr=&H4B
   CONST NumberOfUncnfInSensorMode=10
-  CONST OnePPSMin=5                           'the number of 1PPS pulses before GPS measurement
+  CONST OnePPSMin=3                             'the number of 1PPS pulses before GPS measurement
   CONST LongSleepTimeMin=1                    'the minimum period of sensor mode is 1 minute
   PIN(GPSPWR)=1: SETPIN GPSPWR,DOUT:PAUSE 100
   PIN(FORCE)=0: SETPIN FORCE,DOUT,OC:PAUSE 100  
@@ -64,6 +64,7 @@
   DIM ShortSleepTimeMin=5   ' at long GPSpayload 15sec, at short GPSpayload 5sec
   DIM ShortSleepTime=5      ' seconds 
   DIM GPSMode$="full"       ' or standby during continuous tracking
+  DIM MacTxCnf$="uncnf"     ' application indicates if last mac transmission was cfm or uncfm
   DATA "sys reset","mac pause","mac set ch freq 3 867100000","mac set ch freq 4 867300000","mac set ch freq 5 867500000"
   DATA "mac set ch freq 6 867700000","mac set ch freq 7 867900000","mac set ch dcycle 0 9","mac set ch dcycle 1 9"
   Data "mac set ch dcycle 2 9","mac set ch dcycle 3 9","mac set ch dcycle 4 9","mac set ch dcycle 5 9"
@@ -133,7 +134,7 @@ FiveSecWait:
         x$=INKEY$
         t=0
       CASE "T","t"
-        IF ReadsMCP9800Sensor()>127 THEN ? STR$(ReadsMCP9800Sensor()-256,+3)+" C" ELSE ? STR$(ReadsMCP9800Sensor(),+3)+" C"
+        ? STR$(ReadsMCP9800Sensor(),3,1)+" C"
         ? HEX$(ReadsMCP9800Sensor(),2)
         x$=INKEY$
         t=0
@@ -190,9 +191,8 @@ FiveSecWait:
     AllowMotionSensor=1
     PIN(LEDR)=LEDOFF
     PIN(LEDG)=LEDOFF
-    ? "temperature =";
-    IF ReadsMCP9800Sensor()>127 THEN ? STR$(ReadsMCP9800Sensor()-255,+3)+" C" ELSE ? STR$(ReadsMCP9800Sensor(),+3)+" C     "
-    ? "battery voltage:";
+    ? "temparature =" STR$(ReadsMCP9800Sensor(),3,1)+" C"
+    ? "battery voltage:",
     BatteryLevel
     x$=INKEY$
     t=0
@@ -210,12 +210,15 @@ FiveSecWait:
   WaitsTillRNAnswers  
   RNSleep
   PAUSE 1000
+  Mode$="GPS"
+  CO2Measure
+  SensorPayloadToLoRaWAN
 GPSMode:
   tGPSfull=0 
   CPU 5
   GPSON
   Mode$="GPS"
-  SETPIN WAKEUP,INTL,WakeupInt
+  SETPIN WAKEUP,INTH,WakeupInt
   SETPIN PPS,INTH,PPSInt,PULLUP
   OnePPS=0
   PAUSE 200
@@ -230,6 +233,10 @@ WaitsForPPS:
   Pin(LEDR)=LEDOFF
   CPU SLEEP  
   ? "CPU awake again" 'DEBUG
+  CO2Measure
+  SensorPayloadToLoRaWAN
+  t=0
+  ? t
   GOTO GPSMode
 WaitsForPPS2:
   IF PIN(PUSH)=0 THEN GOTO ModeChangeByButton
@@ -276,6 +283,7 @@ WaitsForPPS2:
   ? arg$(7)+"sat UT"+TIME1$ 'DEBUG
   CPU 10
   RNWakeup
+  MacTxCnf$="uncnf"
   payload$="mac tx uncnf 202 "+HEX$(LAT,6)+HEX$(LON,6)
   IF GPSpayload$="long" THEN payload$=payload$+HEX$(ALT,4)+HEX$(HDOPinteger,2)+HEX$(ReadsMCP9800Sensor(),2)+HEX$(BatteryLevelPayload,2)
   ? payload$ 'DEBUG
@@ -298,21 +306,20 @@ WaitsForPPS2:
   PIN(PGC)=1: SETPIN PGC,DOUT:PAUSE 1
   PIN(LVP)=1: SETPIN LVP,DOUT:PAUSE 1
   ENDIF
-  ? "CPU sleeps ShortSleepTime =";ShortSleepTime;"sec. Left active time =";
-  IF tGPSfull>GPSFullOperationTime THEN ? MaxTime-t ELSE ? GPSFullOperationTime-tGPSfull+MaxTime
+  ? "CPU sleeps ShortSleepTime =";ShortSleepTime;"sec. Left active time ="; MaxTime-t
   PIN(LEDG)=LEDOFF
   Pin(LEDR)=LEDOFF
   SETPIN WAKEUP,OFF
-  PIN(WAKEUP)=0:SETPIN WAKEUP),DOUT
+  PIN(WAKEUP)=0:SETPIN WAKEUP,DOUT
   CPU Sleep ShortSleepTime
   LEDFlash$="G"
   BatteryLevel 
   SETPIN WAKEUP,OFF 
-  SETPIN WAKEUP,INTL,WakeupInt
+  SETPIN WAKEUP,INTH,WakeupInt
   ? "CPU awake again" 'DEBUG
   GPSOPEN
   GPSStandby2Full
-  SETPIN WAKEUP,INTL,WakeupInt
+  SETPIN WAKEUP,INTH,WakeupInt
   SETPIN PPS,INTH,PPSInt,PULLUP
   OnePPS=0
   goto WaitsForPPS
@@ -366,6 +373,7 @@ ChangeToSensor:
   WaitsTillRNAnswers
   ? "mac tx cnf 1 00" 'DEBUG
   PRINT #1,"mac tx cnf 1 00":PAUSE 50
+  MacTxCnf$="cnf"
   WaitsTillRNAnswers
   WaitsTillRNAnswers
   ? "mac tx cnf 1 01" 'DEBUG
@@ -381,6 +389,11 @@ ChangeToSensor:
   ? "mac get dr" 'DEBUG
   PRINT #1,"mac get dr":PAUSE 50
   WaitsTillRNAnswers
+  IF x$="0" THEN                              ' sets minimum dr to 1 in sensor mode
+  ? "mac set dr 1"
+  PRINT #1,"mac set dr 1":PAUSE 50
+  WaitsTillRNAnswers
+  ENDIF
   RNSleep  
   PAUSE 500
   SETPIN WAKEUP,OFF 
@@ -424,8 +437,9 @@ ChangeToGPSMode:
     WaitsTillRNAnswers 
     RNSleep
     PAUSE 1000
-    SETPIN WAKEUP,INTL,WakeupInt
-  PAUSE 100    
+    SETPIN WAKEUP,INTH,WakeupInt
+  PAUSE 100 
+  t=0   
 GOTO GPSMode
 '
 ' END Main program
@@ -438,7 +452,6 @@ SUB OneSecTick
   If Mode$="Service" THEN END SUB
   IF Mode$="Sensor" THEN END SUB
   tGPSfull=tGPSfull+1
-  IF tGPSfull<GPSFullOperationTime THEN t=0
   END SUB
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 SUB RXINT             ' RN2483 RX ISR in background
@@ -453,6 +466,10 @@ SUB RXINT             ' RN2483 RX ISR in background
   x$=left$(x$,len(x$)-2) 'DEBUG
   ? x$                                                 'DEBUG
   IF LEN(x$)<> 21 THEN END SUB
+  IF LEFT$(x$,7)<>"mac_err" THEN GOTO NoMacErr
+  IF MacTxCnf$="cnf" THEN GOTO NoMacErr                'mac_err only allowed during cfm type mac transmission
+  GOTO CPURestarts                                     'mac_err is not allowed during uncnf mac transmission   
+  NoMacErr:
   IF LEFT$(x$,11)<>"mac_rx 209 " THEN END SUB
   IF MID$(x$,12,2)<>"00" THEN ButtonPressedByApplicationServer=VAL(MID$(x$,12,2))        ' push button control from application server
   IF ButtonPressedByApplicationServer<>3 THEN GOTO RXINT1
@@ -640,12 +657,16 @@ SUB SensorPayloadToLoRaWAN
   PAUSE 1000
   BatteryLevel
   payload$="mac tx "
+  IF Mode$="GPS" THEN GOTO AllwaysUNCNF
   IF NumberOfUncnf=0 THEN
   NumberOfUncnf=NumberOfUncnfInSensorMode
   payload$=payload$+"cnf"
+  MacTxCnf$="cnf"  
   ELSE
   NumberOfUncnf=NumberOfUncnf-1
+AllwaysUNCNF:  
   payload$=payload$+"uncnf"
+  MacTxCnf$="uncnf"  
   ENDIF
   payload$=payload$+" 209 "+HEX$(ReadsMCP9800Sensor(),2)+HEX$(BatteryLevelPayload,2)
   IF MID$(CO2dat$,2,1)="Z" THEN payload$=payload$+HEX$(VAL(MID$(CO2dat$,4,5)),4)
@@ -663,6 +684,16 @@ SUB SensorPayloadToLoRaWAN
   ? payload$
   PRINT #1,payload$:PAUSE 50
   WaitsTillRNAnswers  
+  IF Mode$="GPS" THEN GOTO SFRemains
+  ? "mac get dr"
+  PRINT #1,"mac get dr":PAUSE 50
+  WaitsTillRNAnswers
+  IF x$="0" THEN                              ' sets minimum dr to 1 in sensor mode
+  ? "mac set dr 1"
+  PRINT #1,"mac set dr 1":PAUSE 50
+  WaitsTillRNAnswers
+  ENDIF  
+SFRemains:
   RNSleep
   PAUSE 500
   CPU 5
@@ -678,6 +709,7 @@ SUB WaitsTillRNAnswers
   ENDIF
   PAUSE 1
   NEXT MaxTime
+CPURestarts:
   PIN(LEDR)=LEDON
   PIN(LEDG)=LEDON
   PAUSE 2000                          ' two seconds red + green light before Micromite restart
