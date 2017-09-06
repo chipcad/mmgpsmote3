@@ -1,17 +1,18 @@
   ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-  '           Micromite_GPS_LoRa_Mote_3V62.bas
+  '           Micromite_GPS_LoRa_Mote_3V63.bas
   ' IF THEN ELSE structure instead of SELECT CASE for service mode selection in order to allow Micromite Lite
   ' C Class and Multicast
   ' Improved UART communication with RN2483
   ' "mac_err" handling after 'mac tx xxx'
   ' Main MMbasic variables stored in flash and allowed to be modified by downlink messaging
+  ' improved COZIR power switching
   ' Holman Tamas ChipCAD tholman@chpcad.hu
   ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
   OPTION EXPLICIT
   OPTION AUTORUN ON
   OPTION DEFAULT INTEGER
   CPU 10
-    DIM Release=362
+    DIM Release=363
   DIM Programmed$
   Programmed$=" "+DATE$+" "+TIME$
   CONST FORCE=2                               'digital O
@@ -909,13 +910,14 @@ SFRemains:
 END SUB
   ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 SUB CO2Measure
+  PIN(PGC)=0
+  PAUSE 500
   ReceiveTimeout=0
   PIN(SELA)=0
   PIN(SELB)=1
   SETPIN TX1,OFF
   OPEN "COM1:9600" AS #3
   CO2dat$=INPUT$(255,#3)
-  PIN(PGC)=0
   CO2dat$=""
 CO2Mloop:
   IF ReceiveTimeout=3 THEN GOTO CloseCO2Measurement
