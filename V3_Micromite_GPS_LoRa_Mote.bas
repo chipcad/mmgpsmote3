@@ -1,18 +1,19 @@
   ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-  '           Micromite_GPS_LoRa_Mote_3V63.bas
+  '           Micromite_GPS_LoRa_Mote_3V64.bas
   ' IF THEN ELSE structure instead of SELECT CASE for service mode selection in order to allow Micromite Lite
   ' C Class and Multicast
   ' Improved UART communication with RN2483
   ' "mac_err" handling after 'mac tx xxx'
   ' Main MMbasic variables stored in flash and allowed to be modified by downlink messaging
   ' improved COZIR power switching
+  ' GPS timestamp added into long GPS payload
   ' Holman Tamas ChipCAD tholman@chpcad.hu
   ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
   OPTION EXPLICIT
   OPTION AUTORUN ON
   OPTION DEFAULT INTEGER
   CPU 10
-    DIM Release=363
+  DIM Release=364
   DIM Programmed$
   Programmed$=" "+DATE$+" "+TIME$
   CONST FORCE=2                               'digital O
@@ -327,7 +328,7 @@ KeepSearching:
   WaitsTillRNAnswers
   MacTxCnf$="uncnf"
   payload$="mac tx uncnf 202 "+HEX$(LAT,6)+HEX$(LON,6)+HEX$(ALT,4)
-  IF GPSpayload$="long" THEN payload$=payload$+HEX$(HDOPinteger,2)+HEX$(ReadsMCP9800Sensor(),2)+HEX$(BatteryLevelPayload,2)
+  IF GPSpayload$="long" THEN payload$=payload$+HEX$(HDOPinteger,2)+HEX$(ReadsMCP9800Sensor(),2)+HEX$(BatteryLevelPayload,2)+left$(arg$(1),6)
   IF NRofDR6=0 THEN GOTO SendGPSPayload
   IF DR6counter<>0 THEN
     DR6counter=DR6counter-1
@@ -836,7 +837,7 @@ END SUB
 SUB GPSFull2Standby
   IF tGPSfull<=GPSFullOperationTime THEN
     GPSMode$="full"
-    GPSCLOSE
+        GPSCLOSE
 END SUB
   END IF
   PRINT #2,"$PMTK161,0*28":COM2TXEmpty
@@ -911,7 +912,7 @@ END SUB
   ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 SUB CO2Measure
   PIN(PGC)=0
-  PAUSE 500
+  PAUSE 1000
   ReceiveTimeout=0
   PIN(SELA)=0
   PIN(SELB)=1
