@@ -1,5 +1,5 @@
   ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-  '           Micromite_GPS_LoRa_Mote_3V64.bas
+  '           Micromite_GPS_LoRa_Mote_3V65.bas
   ' IF THEN ELSE structure instead of SELECT CASE for service mode selection in order to allow Micromite Lite
   ' C Class and Multicast
   ' Improved UART communication with RN2483
@@ -13,7 +13,7 @@
   OPTION AUTORUN ON
   OPTION DEFAULT INTEGER
   CPU 10
-  DIM Release=364
+  DIM Release=365
   DIM Programmed$
   Programmed$=" "+DATE$+" "+TIME$
   CONST FORCE=2                               'digital O
@@ -1045,6 +1045,10 @@ SUB MacError
   WaitsTillRNAnswers
   ? "mac set upctr "+upctr$
   PRINT #1,"mac set upctr "+upctr$:COM1TXEmpty
+  WaitsTillRNAnswers
+  IF Mode$<>"Sensor" THEN END SUB
+  ? "mac set adr on"
+  PRINT #1,"mac set adr on":COM1TXEmpty
   WaitsTillRNAnswers
 END SUB
   ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
