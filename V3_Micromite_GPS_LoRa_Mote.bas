@@ -1,5 +1,5 @@
   ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-  '           Micromite_GPS_LoRa_Mote_3V91.bas
+  '           Micromite_GPS_LoRa_Mote_3V94.bas
   ' IF THEN ELSE structure instead of SELECT CASE for service mode selection in order to allow Micromite Lite
   ' C Class and Multicast
   ' Improved UART communication with RN2483
@@ -12,13 +12,15 @@
   ' in C-Class_Multicast mode downlink counter of RN2483 will always be cleared before opening RX2 window
   ' mac_err reset delete
   ' SMI1131 air-pressure and TH06 sensor support
+  ' revised GPS payload calculations               June 10 2018
+  ' revised Adeunis GPS payload format conversion  June 10 2018
   ' Holman Tamas ChipCAD tholman@chpcad.hu
   ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
   OPTION EXPLICIT
   OPTION AUTORUN ON
   OPTION DEFAULT INTEGER
   CPU 10
-  DIM Release=391
+  DIM Release=394
   DIM Programmed$
   Programmed$=" "+DATE$+" "+TIME$
   CONST FORCE=2                               'digital O
@@ -56,7 +58,7 @@
   PIN(RNReset)=1: SETPIN RNReset,DOUT:PAUSE 10 ' resets RN2483 module
   PIN(RNReset)=0:PAUSE 10                        ' resets RN2483 module
   PIN(RNReset)=1:PAUSE 10                        ' resets RN2483 module
-  SETPIN RNReset,OFF                              ' resets RN2483 module
+  SETPIN RNReset,OFF                             ' resets RN2483 module
   SETPIN PUSH,DIN,PULLUP
   ' variables
   DIM OnePPSMin=3                           'the number of 1PPS pulses before GPS measurement
@@ -68,8 +70,8 @@
   DIM DR6counter=0
   DIM NumberOfUncnfInSensorMode=12
   DIM Downlink05$=""                        ' during GPS mode the downlink message is processed in main program
-  DIM arg$(20),i,f,sf,t=0,ReceiveTimeout=0,ButtonTimeout=0,MMBREQRNBR,tGPSfull=0,x$,y$,cx$,cy$, TIME1$,LatDD, LatMM, LatMMMM, LonDDD, LonMM, LonMMMM, NrSat
-  DIM LAT=0,LON=0,ALT=0,AllowMotionSensor=0,HDOPinteger,COM1Class=0
+  DIM arg$(20),i,f,sf,t=0,ReceiveTimeout=0,ButtonTimeout=0,MMBREQRNBR,tGPSfull=0,x$,y$,cx$,cy$,NrSat
+  DIM Lat=0,Lon=0,Alt=0,Latitude$,Longitude$,Altitude$,AllowMotionSensor=0,HDOPinteger,COM1Class=0
   DIM payload$="",CMD2RN_LoRaWANini$(39),OnePPS=0,ChkSum=0,ChkSumEnd=0,CClassMulticast$(5)
   DIM SensorCounter=0,CO2dat$,CO2limit=65535,CO2ppm=0
   DIM RNReceived=0,NumberOfUncnf=NumberOfUncnfInSensorMode,LEDFlash$="G"
@@ -86,9 +88,9 @@
   DIM SMI_TEMP,SMI_PRESS     ' end SMI1131
   DIM TH06_TEMP!,TH06_HUMID! ' end TH06
   DATA "sys reset","mac pause"
-  DATA "mac set ch dcycle 0 9","mac set ch drrange 0 0 5","mac set ch status 0 on"
-  DATA "mac set ch dcycle 1 9","mac set ch drrange 1 0 5","mac set ch status 1 on"
-  DATA "mac set ch dcycle 2 9","mac set ch drrange 2 0 5","mac set ch status 2 on"
+  DATA "mac set ch dcycle 0 0","mac set ch drrange 0 0 5","mac set ch status 0 on"
+  DATA "mac set ch dcycle 1 0","mac set ch drrange 1 0 5","mac set ch status 1 on"
+  DATA "mac set ch dcycle 2 0","mac set ch drrange 2 0 5","mac set ch status 2 on"
   DATA "mac set ch freq 3 867100000","mac set ch dcycle 3 0","mac set ch drrange 3 0 5","mac set ch status 3 on"
   DATA "mac set ch freq 4 867300000","mac set ch dcycle 4 0","mac set ch drrange 4 0 5","mac set ch status 4 on"
   DATA "mac set ch freq 5 867500000","mac set ch dcycle 5 0","mac set ch drrange 5 0 5","mac set ch status 5 on"
@@ -414,42 +416,33 @@ KeepSearching:
     GOTO KeepSearching
   ENDIF
   GPSFull2Standby
-  TIME1$ = left$(arg$(1),2) + ":" + MID$(arg$(1),3,2) + ":" + MID$(arg$(1),5,2)
-  LatDD=(val(MID$(arg$(2),1,1))*10+VAL(MID$(arg$(2),2,1)))*600000
-  LatMM=(val(MID$(arg$(2),3,1))*10+VAL(MID$(arg$(2),4,1)))*10000
-  LatMMMM=(val(MID$(arg$(2),6,1))*1000+VAL(MID$(arg$(2),7,1))*100+val(MID$(arg$(2),8,1))*10+VAL(MID$(arg$(2),9,1)))
-  Lat=(LatDD+LatMM+LatMMMM)*8388608\54000000
-  IF arg$(3)="S" THEN LAT=-LAT                        ' latitude
-  IF arg$(3)="N" THEN NS$="0" ELSE NS$="1"
-  LonDDD=(val(MID$(arg$(4),1,1))*100+VAL(MID$(arg$(4),2,1))*10+VAL(MID$(arg$(4),3,1)))*600000
-  LonMM=(val(MID$(arg$(4),4,1))*10+val(MID$(arg$(4),5,1)))*10000
-  LonMMMM=(val(MID$(arg$(4),7,1))*1000+VAL(MID$(arg$(4),8,1))*100+val(MID$(arg$(4),9,1))*10+VAL(MID$(arg$(4),10,1)))
-  Lon=(LonDDD+LonMM+LonMMMM)*8388608\108000000
-  IF arg$(5)="W" THEN Lon=-Lon                        ' longitude
-  IF arg$(5)="E" THEN EW$="0" ELSE EW$="1"
+  TIME$ = left$(arg$(1),2) + ":" + MID$(arg$(1),3,2) + ":" + MID$(arg$(1),5,2)                              ' Micromite TIME$ syncronized to GPS
+  Lat=(val(mid$(arg$(2),1,2))*600000+val(mid$(arg$(2),3,2))*10000+val(mid$(arg$(2),6,4)))*8388608\54000000  'ASCII GPS coordinates coding to 24bit/16bit binaries
+  IF arg$(3)="S" THEN Latitude$=HEX$(-Lat AND &Hffffff,6) ELSE Latitude$=HEX$(Lat,6)
+  IF arg$(3)="S" THEN NS$="1" ELSE NS$="0"
+  Lon=(val(MID$(arg$(4),1,3))*600000+val(MID$(arg$(4),4,2))*10000+val(MID$(arg$(4),7,4)))*8388608\108000000
+  IF arg$(5)="W" THEN Longitude$=HEX$(-Lon AND &Hffffff,6) ELSE Longitude$=HEX$(Lon,6)
+  IF arg$(5)="W" THEN EW$="1" ELSE EW$="0"
   Alt=VAL(arg$(9))                                    ' Altitude
-  If Alt<0 THEN Alt=0
-  IF Alt>10000 THEN Alt=10000
+  If Alt<0 THEN Altitude$=HEX$(0,4)
+  IF Alt>15000 THEN Altitude$=HEX$(15000,4) ELSE Altitude$=HEX$(Alt,4)
   NrSat=VAL(arg$(7))                                  ' number of satellites
   IF HDOPinteger<50 THEN GPSQuality= 16 ELSE GPSQuality=32
   IF NrSat>15 THEN GPSQuality=GPSQuality+15 ELSE GPSQuality=GPSQuality+NrSat
-  ? arg$(7)+"sat UT"+TIME1$ 'DEBUG
+  ? arg$(7)+"sat UT"+TIME$ 'DEBUG
   CPU 10
   RNWakeup
   WaitsTillRNAnswers
   MacTxCnf$="uncnf"
   IF GPSDeviceID=15 THEN                              'Adeunis GPS format
-    payload$="mac tx uncnf 1 90"+HEX$(ReadsMCP9800Sensor(),2)+MID$(arg$(2),1,4)+MID$(arg$(2),6,3)+NS$
-    payload$=payload$+MID$(arg$(4),1,5)+MID$(arg$(4),7,2)+EW$
-    '    payload$=payload$+HEX$(GPSQuality,2)
-    '    payload$=payload$+HEX$(BatteryLevelPayload*7+3500,4)
+    payload$="mac tx uncnf 1 d2"+HEX$(ReadsMCP9800Sensor(),2)+MID$(arg$(2),1,4)+MID$(arg$(2),6,3)+NS$+MID$(arg$(4),1,5)+MID$(arg$(4),7,2)+EW$+HEX$(BatteryLevelHeader*700/254+3500,4)
     goto SendBothGPS
   endif
-  IF GPSDeviceID=14 THEN                              'Adeunis GPS format
-    payload$="mac tx uncnf 2 00000000000000"+HEX$(BatteryLevelHeader,2)+HEX$(LAT,6)+HEX$(LON,6)+HEX$(ALT,4)
+  IF GPSDeviceID=14 THEN                              'Semtech GPS format
+    payload$="mac tx uncnf 2 00000000000000"+HEX$(BatteryLevelHeader,2)+Latitude$+Longitude$+Altitude$
     goto SendBothGPS
   endif
-  payload$="mac tx uncnf 202 "+HEX$(LAT,6)+HEX$(LON,6)+HEX$(ALT,4)
+  payload$="mac tx uncnf 202 "+Latitude$+Longitude$+Altitude$
   IF GPSpayload$="long" THEN
     ' SM1131_PRESS
     ' here comes altitude calculation based on airpressure
@@ -635,11 +628,6 @@ ChangeToSensor:
   ? "mac get dr" 'DEBUG
   PRINT #1,"mac get dr":COM1TXEmpty
   WaitsTillRNAnswers
-  '  IF x$="0" THEN                              ' sets minimum dr to 1 in sensor mode
-  '    ? "mac set dr 1"
-  '    PRINT #1,"mac set dr 1":COM1TXEmpty
-  '    WaitsTillRNAnswers
-  '  ENDIF
   RNSleep
   PAUSE 500
   SETPIN WAKEUP,OFF
@@ -653,7 +641,7 @@ SensorMode:
     RNWakeup
     WaitsTillRNAnswers
     LEDFlash$="R"
-    payload$="mac tx uncnf 202 "+HEX$(LAT,6)+HEX$(LON,6)+HEX$(0,4)  'transmits last valid GPS latitude and longitude with zero altitude
+    payload$="mac tx uncnf 202 "+Latitude$+Longitude$+HEX$(0,4)  'transmits last valid GPS latitude and longitude with zero altitude
     NumberOfUncnf=NumberOfUncnf-1
     ? "NumberOfUncnf=",NumberOfUncnf
     ? payload$
@@ -693,6 +681,8 @@ ChangeToGPSMode:
   LOOP
   PIN(LEDG)=LEDOFF
   ButtonPressedByApplicationServer=0
+  t=0
+  tGPSfull=0
   SETPIN WAKEUP,OFF
   PIN(GPSPWR)=0
   PIN(FORCE)=1
@@ -781,7 +771,7 @@ SUB Syncronise
   MMBREQRNBR=-3600
 END SUB
   ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-  '             interrupt service routins
+  '             interrupt   service routins
   ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 SUB OneSecTick
   IF LEDFlash$="G" THEN pulse LEDG,5 ELSE PULSE LEDR,5
@@ -789,9 +779,7 @@ SUB OneSecTick
   ReceiveTimeout=ReceiveTimeout+1
   ButtonTimeout=ButtonTimeout+1
   MMBREQRNBR=MMBREQRNBR+1                                   'RN2483 baudrate = Micromite baudrate once in every 10 minutes
-  If Mode$="Service" THEN END SUB
-  IF Mode$="Sensor" THEN END SUB
-  tGPSfull=tGPSfull+1
+  If Mode$="GPS" THEN tGPSfull=tGPSfull+1
 END SUB
   ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 SUB RXINT             ' RN2483 RX ISR in background
@@ -1129,7 +1117,7 @@ SUB WaitsTillRNAnswers
   DO
     IF ReceiveTimeout=600 then
       DO
-        PULSE LEDR,20
+        PULSE LEDG,20
         PULSE LEDR,20
         PAUSE 1000
         ? "RN2483 does't respond"
